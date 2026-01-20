@@ -1,6 +1,8 @@
 using CrudApp.Backend.Models;
+using CrudApp.Backend.Services;
 using Microsoft.Extensions.Options;
 using MongoDB.Driver;
+using Minio;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -28,6 +30,23 @@ builder.Services.AddSingleton<IMongoCollection<Person>>(sp =>
     var collectionName = string.IsNullOrWhiteSpace(settings.CollectionName) ? "persons" : settings.CollectionName;
     return database.GetCollection<Person>(collectionName);
 });
+
+// MinIO configuration
+builder.Services.AddSingleton<IMinioClient>(sp =>
+{
+    var configuration = sp.GetRequiredService<IConfiguration>();
+    var endpoint = configuration["MinIO:Endpoint"] ?? "localhost:9000";
+    var accessKey = configuration["MinIO:AccessKey"] ?? "minioadmin";
+    var secretKey = configuration["MinIO:SecretKey"] ?? "minioadmin";
+    var useSSL = bool.Parse(configuration["MinIO:UseSSL"] ?? "false");
+
+    return new MinioClient()
+        .WithEndpoint(endpoint)
+        .WithCredentials(accessKey, secretKey)
+        .WithSSL(useSSL)
+        .Build();
+});
+builder.Services.AddScoped<IFileService, FileService>();
 
 // Add services to the container
 builder.Services.AddControllers();
