@@ -1,0 +1,42 @@
+version: "3.9"
+
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+
+  mongo-express:
+    image: mongo-express:1.0.2
+    restart: unless-stopped
+    depends_on:
+      - mongo
+    environment:
+      ME_CONFIG_MONGODB_ADMINUSERNAME: ${MONGO_INITDB_ROOT_USERNAME}
+      ME_CONFIG_MONGODB_ADMINPASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
+      ME_CONFIG_MONGODB_SERVER: mongo
+      ME_CONFIG_BASICAUTH_USERNAME: ${MONGO_EXPRESS_BASICAUTH_USERNAME}
+      ME_CONFIG_BASICAUTH_PASSWORD: ${MONGO_EXPRESS_BASICAUTH_PASSWORD}
+    ports:
+      - "8081:8081"
+
+  seeder:
+    build:
+      context: ./seeder
+      dockerfile: Dockerfile
+    depends_on:
+      - mongo
+    environment:
+      MONGO_CONNECTION_STRING: "mongodb://root:example@mongo:27017"
+      MONGO_DATABASE: "persons"
+      MONGO_COLLECTION: "persons"
+    restart: "no"
+
+volumes:
+  mongo-data:
