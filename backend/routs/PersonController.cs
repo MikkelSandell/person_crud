@@ -75,21 +75,14 @@ namespace CrudApp.Backend.Routes
             PersonUtil.TryParseBirthDateFromCpr(request.Cpr, out var birthDate);
             var starSign = birthDate == default ? string.Empty : PersonUtil.GetStarSign(birthDate) ?? string.Empty;
 
-            string profilePictureUrl = string.Empty;
+            string profilePictureFileName = string.Empty;
             
             // Handle profile picture if it's a base64 string
             if (!string.IsNullOrWhiteSpace(request.ProfilePicture) && request.ProfilePicture.StartsWith("data:image"))
             {
                 try
                 {
-                    var base64Data = request.ProfilePicture.Split(',')[1];
-                    var imageBytes = Convert.FromBase64String(base64Data);
-                    var contentType = request.ProfilePicture.Split(';')[0].Split(':')[1];
-                    var extension = contentType.Split('/')[1];
-                    var fileName = $"{Guid.NewGuid()}.{extension}";
-
-                    using var stream = new MemoryStream(imageBytes);
-                    profilePictureUrl = await _fileService.UploadFileAsync(stream, fileName, contentType);
+                    profilePictureFileName = await _fileService.UploadBase64ImageAsync(request.ProfilePicture);
                 }
                 catch (Exception ex)
                 {
@@ -98,14 +91,14 @@ namespace CrudApp.Backend.Routes
             }
             else
             {
-                profilePictureUrl = request.ProfilePicture ?? string.Empty;
+                profilePictureFileName = request.ProfilePicture ?? string.Empty;
             }
 
             var person = new Person
             {
                 Username = request.Username.Trim(),
                 Cpr = request.Cpr.Trim(),
-                ProfilePicture = profilePictureUrl,
+                ProfilePicture = profilePictureFileName,
                 StarSign = starSign
             };
 
@@ -132,33 +125,22 @@ namespace CrudApp.Backend.Routes
             PersonUtil.TryParseBirthDateFromCpr(request.Cpr, out var birthDate);
             var starSign = birthDate == default ? string.Empty : PersonUtil.GetStarSign(birthDate) ?? string.Empty;
 
-            string profilePictureUrl = request.ProfilePicture ?? string.Empty;
+            string profilePictureFileName = request.ProfilePicture ?? string.Empty;
 
             // Handle profile picture update
             if (!string.IsNullOrWhiteSpace(request.ProfilePicture) && request.ProfilePicture.StartsWith("data:image"))
             {
                 try
                 {
-                    // Delete old picture if it exists and is from MinIO
+                    // Delete old picture if it exists (it's a filename now, not a URL)
                     if (!string.IsNullOrWhiteSpace(existingPerson.ProfilePicture) && 
-                        existingPerson.ProfilePicture.Contains("localhost:9000"))
+                        !existingPerson.ProfilePicture.StartsWith("http"))
                     {
-                        var oldFileName = ExtractFileNameFromUrl(existingPerson.ProfilePicture);
-                        if (!string.IsNullOrWhiteSpace(oldFileName))
-                        {
-                            await _fileService.DeleteFileAsync(oldFileName);
-                        }
+                        await _fileService.DeleteFileAsync(existingPerson.ProfilePicture);
                     }
 
                     // Upload new picture
-                    var base64Data = request.ProfilePicture.Split(',')[1];
-                    var imageBytes = Convert.FromBase64String(base64Data);
-                    var contentType = request.ProfilePicture.Split(';')[0].Split(':')[1];
-                    var extension = contentType.Split('/')[1];
-                    var fileName = $"{Guid.NewGuid()}.{extension}";
-
-                    using var stream = new MemoryStream(imageBytes);
-                    profilePictureUrl = await _fileService.UploadFileAsync(stream, fileName, contentType);
+                    profilePictureFileName = await _fileService.UploadBase64ImageAsync(request.ProfilePicture);
                 }
                 catch (Exception ex)
                 {
@@ -169,7 +151,7 @@ namespace CrudApp.Backend.Routes
             var update = Builders<Person>.Update
                 .Set(p => p.Username, request.Username?.Trim() ?? string.Empty)
                 .Set(p => p.Cpr, request.Cpr?.Trim() ?? string.Empty)
-                .Set(p => p.ProfilePicture, profilePictureUrl)
+                .Set(p => p.ProfilePicture, profilePictureFileName)
                 .Set(p => p.StarSign, starSign);
 
             var result = await _persons.FindOneAndUpdateAsync<Person>(
@@ -203,15 +185,11 @@ namespace CrudApp.Backend.Routes
                 return NotFound();
             }
 
-            // Delete profile picture from MinIO if it exists
+            // Delete profile picture from MinIO if it exists (it's a filename now, not a URL)
             if (!string.IsNullOrWhiteSpace(person.ProfilePicture) && 
-                person.ProfilePicture.Contains("localhost:9000"))
+                !person.ProfilePicture.StartsWith("http"))
             {
-                var fileName = ExtractFileNameFromUrl(person.ProfilePicture);
-                if (!string.IsNullOrWhiteSpace(fileName))
-                {
-                    await _fileService.DeleteFileAsync(fileName);
-                }
+                await _fileService.DeleteFileAsync(person.ProfilePicture);
             }
 
             var deleteResult = await _persons.DeleteOneAsync(p => p.Id == id);
@@ -238,18 +216,32 @@ namespace CrudApp.Backend.Routes
             }
         }
 
-        private static PersonResponse ToResponse(Person p)
+        private PersonResponse ToResponse(Person p)
         {
             PersonUtil.TryParseBirthDateFromCpr(p.Cpr, out var birthDate);
             var age = PersonUtil.CalculateAgeFromCpr(p.Cpr);
             var starSign = birthDate == default ? string.Empty : PersonUtil.GetStarSign(birthDate) ?? string.Empty;
+
+            // Generate fresh presigned URL if ProfilePicture is a filename (not a URL)
+            string profilePictureUrl = p.ProfilePicture;
+            if (!string.IsNullOrWhiteSpace(p.ProfilePicture) && !p.ProfilePicture.StartsWith("http"))
+            {
+                try
+                {
+                    profilePictureUrl = _fileService.GetFileUrlAsync(p.ProfilePicture).Result;
+                }
+                catch
+                {
+                    profilePictureUrl = string.Empty;
+                }
+            }
 
             return new PersonResponse
             {
                 Id = p.Id ?? string.Empty,
                 Username = p.Username,
                 Cpr = p.Cpr,
-                ProfilePicture = p.ProfilePicture,
+                ProfilePicture = profilePictureUrl,
                 Age = age,
                 StarSign = starSign,
                 FriendIds = p.FriendIds

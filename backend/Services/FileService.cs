@@ -10,6 +10,7 @@ namespace CrudApp.Backend.Services
         Task<bool> DeleteFileAsync(string fileName);
         Task<string> GetFileUrlAsync(string fileName);
         Task<bool> FileExistsAsync(string fileName);
+        Task<string> UploadBase64ImageAsync(string base64Image);
     }
 
     public class FileService : IFileService
@@ -63,7 +64,7 @@ namespace CrudApp.Backend.Services
                 await _minioClient.PutObjectAsync(putObjectArgs).ConfigureAwait(false);
                 _logger.LogInformation($"File '{fileName}' uploaded successfully.");
                 
-                return await GetFileUrlAsync(fileName);
+                return fileName; // Return just the filename, not the presigned URL
             }
             catch (Exception ex)
             {
@@ -148,6 +149,32 @@ namespace CrudApp.Backend.Services
             catch
             {
                 return false;
+            }
+        }
+
+        public async Task<string> UploadBase64ImageAsync(string base64Image)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(base64Image) || !base64Image.StartsWith("data:image"))
+                {
+                    throw new ArgumentException("Invalid base64 image format.");
+                }
+
+                // Extract base64 data and content type
+                var base64Data = base64Image.Split(',')[1];
+                var imageBytes = Convert.FromBase64String(base64Data);
+                var contentType = base64Image.Split(';')[0].Split(':')[1];
+                var extension = contentType.Split('/')[1];
+                var fileName = $"{Guid.NewGuid()}.{extension}";
+
+                using var stream = new MemoryStream(imageBytes);
+                return await UploadFileAsync(stream, fileName, contentType);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error uploading base64 image.");
+                throw;
             }
         }
     }
