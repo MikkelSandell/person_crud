@@ -155,7 +155,6 @@ function App() {
       {showAddFriendModal && selectedPerson && (
         <AddFriendModal
           person={selectedPerson}
-          allPersons={persons}
           onClose={() => setShowAddFriendModal(false)}
           onAddFriend={handleAddFriend}
         />

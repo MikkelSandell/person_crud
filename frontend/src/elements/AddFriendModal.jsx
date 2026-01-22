@@ -1,12 +1,36 @@
 import React, { useState, useEffect } from 'react';
 import placeholderImg from '../UtilElements/placeholder.svg';
 
-function AddFriendModal({ person, allPersons, onClose, onAddFriend }) {
+function AddFriendModal({ person, onClose, onAddFriend }) {
   const [selectedFriendId, setSelectedFriendId] = useState('');
   const [loading, setLoading] = useState(false);
+  const [allPersons, setAllPersons] = useState([]);
+  const [allPersonsLoading, setAllPersonsLoading] = useState(false);
+  const [allPersonsError, setAllPersonsError] = useState('');
+
+  // Load all persons so selection isn't limited to the current page
+  useEffect(() => {
+    const loadAll = async () => {
+      setAllPersonsLoading(true);
+      setAllPersonsError('');
+      try {
+        // Fetch with a large pageSize to cover typical datasets
+        const res = await fetch('http://localhost:5000/api/person?skip=0&pageSize=1000&sortBy=username&sortOrder=asc');
+        if (!res.ok) throw new Error('Failed to load people');
+        const data = await res.json();
+        setAllPersons(data.items || []);
+      } catch (err) {
+        setAllPersonsError(err.message);
+      } finally {
+        setAllPersonsLoading(false);
+      }
+    };
+
+    loadAll();
+  }, []);
 
   const availableFriends = allPersons.filter(
-    (p) => p.id !== person.id && !person.friendIds?.includes(p.id)
+    (p) => p.id !== person.id && !(person.friendIds || []).includes(p.id)
   );
 
   const handleAdd = async () => {
@@ -55,6 +79,7 @@ function AddFriendModal({ person, allPersons, onClose, onAddFriend }) {
               cursor: 'pointer',
             }}
           >
+          {allPersonsError && <p className="error-message">{allPersonsError}</p>}
             {loading ? 'Adding...' : 'Add'}
           </button>
           <button
