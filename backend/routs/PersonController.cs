@@ -185,6 +185,11 @@ namespace CrudApp.Backend.Routes
                 return NotFound();
             }
 
+            // Remove this person from all other friend lists to avoid dangling references
+            await _persons.UpdateManyAsync(
+                Builders<Person>.Filter.AnyEq(p => p.FriendIds, id),
+                Builders<Person>.Update.Pull(p => p.FriendIds, id));
+
             // Delete profile picture from MinIO if it exists (it's a filename now, not a URL)
             if (!string.IsNullOrWhiteSpace(person.ProfilePicture) && 
                 !person.ProfilePicture.StartsWith("http"))
