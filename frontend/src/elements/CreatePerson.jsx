@@ -10,6 +10,7 @@ function CreatePerson({ onCreated }) {
   const [success, setSuccess] = useState('');
   const [cprError, setCprError] = useState('');
   const cprPart2Ref = useRef(null);
+  const fileInputRef = useRef(null);
 
   const isValidCprDate = (ddmmyy) => {
     if (!ddmmyy || ddmmyy.length !== 6) return false;
@@ -79,6 +80,9 @@ function CreatePerson({ onCreated }) {
       setCprPart2('');
       setCprError('');
       setProfilePicture('');
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
       onCreated?.();
     } catch (err) {
       setError(err.message);
@@ -156,7 +160,7 @@ function CreatePerson({ onCreated }) {
         </label>
         <label>
           Profile picture (optional)
-          <input type="file" accept="image/*" onChange={handleFileChange} />
+          <input type="file" accept="image/*" onChange={handleFileChange} ref={fileInputRef} />
           {profilePicture && <small className="muted">Image loaded</small>}
         </label>
         <button type="submit" disabled={loading}>{loading ? 'Saving...' : 'Create'}</button>
